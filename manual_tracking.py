@@ -1,12 +1,9 @@
- 
+import os
 import numpy as np
 import cv2
 import matplotlib.pyplot as plt
 import json
 from datetime import datetime
-
-
-
 
 
 class ManualTracker():
@@ -27,17 +24,44 @@ class ManualTracker():
         
         self.display_current_points = True
         self.display_other_points = True
+
+    def save(self, suffix=None):
+        file_name = f"./save_{str(datetime.now())[:19].replace(':', '-').replace(' ', '_')}.json"
+        if suffix is not None:
+            file_name = file_name[:-4] + f"_{suffix}.json"
+        else:
+            print(f"saving as : {file_name}")
+        with open(file_name, 'w') as json_file:
+            json.dump(self.list_cells, json_file)
+
+    def load(self, file_name):
+        with open(file_name, 'r') as json_file:
+            data = json.load(json_file)
+            for el in data:
+                cell = {int(k): v for k, v in el.items()}
+                self.list_cells.append(cell)
+
+    def set_autosave_interval(self, interval):
+        self.autosave_interval = interval
     
-    def mouseCallback(self, event, x, y, flags, userdata):
+    def mouseCallback(self, event, x, y, flags, userdata, **kargs):
+        if bool(kargs):
+            print(f"mouseCallback - Extra arguments {kargs}")
         if (event & 1) and (flags & 2):
             self.reset_signal = False
             self.current_cell_position[self.current_frame] = [x, y]
             self.current_frame += 1
             self.displayFrame()
 
-    def trackCallback(self, pos):
+    def trackCallback(self, pos, **kargs):
+        if bool(kargs):
+            print(f"trackCallback - Extra arguments {kargs}")
         self.displayFrame(pos)
-        
+
+    def saveButtonCallback(self, state, data, **kargs):
+        if bool(kargs):
+            print(f"saveButtonCallback - Extra arguments {kargs}")
+
     def displayFrame(self, specific_t=None):
         f = self.current_frame
         if specific_t is not None:
@@ -68,25 +92,6 @@ class ManualTracker():
         
         cv2.imshow('img', self.current_image)
         cv2.imshow('scroll', np.zeros((10, 400)).astype(np.uint8))
-
-    def save(self, suffix=None):
-        file_name = f"./save_{str(datetime.now())[:19].replace(':', '-').replace(' ', '_')}.json"
-        if suffix is not None:
-            file_name = file_name[:-4] + f"_{suffix}.json"
-        else:
-            print(f"saving as : {file_name}")
-        with open(file_name, 'w') as json_file:
-            json.dump(self.list_cells, json_file)
-    
-    def load(self, file_name):
-        with open(file_name, 'r') as json_file:
-            data = json.load(json_file)
-            for el in data:
-                cell = {int(k): v for k, v in el.items()}
-                self.list_cells.append(cell)
-    
-    def set_autosave_interval(self, interval):
-        self.autosave_interval = interval
         
     def run(self):
         cv2.namedWindow("img", cv2.WINDOW_GUI_NORMAL)
@@ -122,10 +127,26 @@ class ManualTracker():
         
         cv2.destroyAllWindows()
 
-tracker = ManualTracker("90_stab.tif", 0)
-#tracker.load("save_2021-04-03_20-33-55.json")
-tracker.display_current_points = False
-tracker.run()
+
+if __name__ == '__main__':
+
+    input_file = input('Path to the file : ')
+    if not os.path.isfile(input_file):
+        print(f'Given path is not a file')
+        exit(1)
+    start_frame = input('Start at frame (default 0): ')
+    try:
+        if len(start_frame) != 0:
+            start_frame = 0
+        else:
+            start_frame = int(start_frame)
+    except:
+        start_frame = 0
+
+    tracker = ManualTracker(input_file, start_frame)
+    #tracker.load("save_2021-04-03_20-33-55.json")
+    #tracker.display_current_points = True
+    tracker.run()
 
 
 
