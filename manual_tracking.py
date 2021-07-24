@@ -1,28 +1,26 @@
 import os
 import numpy as np
 import cv2
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 import json
 from datetime import datetime
 
 
-class ManualTracker():
+class ManualTracker(object):
     def __init__(self, file, starting_frame=0):
         self.list_cells = []
         self.current_cell_position = {}
-        
-        self.reset_signal = False
-        
+
         ret, self.images = cv2.imreadmulti(file)[starting_frame:]
         self.starting_frame = starting_frame
         self.current_frame = self.starting_frame
         self.current_image = self.images[self.current_frame]
         self.image_for_drawings = self.current_image.copy()
-        
+
         self.autosave_interval = 10
-        
+
         self.h, self.w = self.images[0].shape
-        
+
         self.display_current_points = True
         self.display_other_points = True
 
@@ -39,6 +37,8 @@ class ManualTracker():
         self.alpha = 1.0
         self.beta = 0
         self.gamma = 1.0
+
+        self.display_frame_offset = 0
 
     def save(self, suffix=None, include_current=False):
         file_name = f"./save_{str(datetime.now())[:19].replace(':', '-').replace(' ', '_')}.json"
@@ -95,8 +95,8 @@ class ManualTracker():
         self.mouse_drag = {
             "active": False,
             "set": False,
-            "start": np.ones((2), dtype=np.int64)*-1,
-            "end": np.ones((2), dtype=np.int64)*-1
+            "start": np.ones((2), dtype=np.int64) * -1,
+            "end": np.ones((2), dtype=np.int64) * -1
         }
 
     def undo(self):
@@ -107,12 +107,14 @@ class ManualTracker():
             self.current_cell_position = self.list_cells[-1]
             self.list_cells = self.list_cells[:-1]
             self.current_frame = max(k for k, _ in self.current_cell_position.items()) + 1
+        self.reset_display_offset()
         self.reset_rect()
         self.prepare_frame()
-        self.displayFrame()
+        self.display_frame()
+        self.refresh_track_frame()
 
-    def next(self, type):
-        if type == "time":
+    def next(self, what):
+        if what == "time":
             # validate rect
             if self.mouse_drag["end"][0] >= 0 and self.mouse_drag["end"][1] >= 0:
                 dict_to_add = {
@@ -121,31 +123,34 @@ class ManualTracker():
                         "end": self.mouse_drag["end"]
                     }
                 }
-                # print(f'validating {dict_to_add}')
                 self.current_cell_position[self.current_frame] = dict_to_add
 
                 self.prepare_frame()
                 self.current_frame += 1
+                self.reset_display_offset()
                 self.reset_rect()
+                self.refresh_track_frame()
             else:
                 return self.next("cell")
-        elif type == "cell":
-            print(f'next cell')
+        elif what == "cell":
             self.list_cells.append(self.current_cell_position)
             self.current_cell_position = {}
-            self.current_frame = 0
+            self.current_frame = self.starting_frame
+
+            self.reset_display_offset()
             self.reset_rect()
 
             self.prepare_frame()
-            self.displayFrame()
+            self.display_frame()
+            self.refresh_track_frame()
 
             if len(self.list_cells) % self.autosave_interval == 0:
                 self.save("autosave")
 
     def set_autosave_interval(self, interval):
         self.autosave_interval = interval
-    
-    def mouseCallback(self, event, x, y, flags, userdata, **kargs):
+
+    def mouse_callback(self, event, x, y, flags, userdata, **kargs):
         if bool(kargs):
             print(f"mouseCallback - Extra arguments {kargs}")
 
@@ -153,7 +158,6 @@ class ManualTracker():
             if flags & cv2.EVENT_FLAG_RBUTTON:
                 # move during rectangle draw
                 if self.mouse_drag["active"]:
-                    # print("mouse r pressed and move")
                     self.mouse_drag["end"] = np.array([x, y])
                     self.mouse_drag["set"] = True
         elif event == cv2.EVENT_RBUTTONUP:
@@ -166,48 +170,65 @@ class ManualTracker():
             self.mouse_drag["active"] = True
         else:
             return
-        self.displayFrame()
+        self.display_frame()
 
-    def trackCallback(self, id, value, **kargs):
+    def track_callback(self, what, value, **kargs):
         if bool(kargs):
             print(f"trackCallback - Extra arguments {kargs}")
-        if id == 'frame':
-            self.displayFrame(value)
-        if id == 'alpha':
+        if what == 'frame':
+            value -= self.current_frame
+            if value == 0:
+                self.reset_display_offset()
+            else:
+                cv2.displayOverlay("img", f"/!\\ Displaying frame {self.current_frame + value} instead of {self.current_frame}", 0)
+            self.display_frame_offset = value
+            self.prepare_frame()
+            self.display_frame()
+        if what == 'alpha':
             self.alpha = value * 0.01
             self.prepare_frame()
-            self.displayFrame()
-        if id == 'beta':
+            self.display_frame()
+        if what == 'beta':
             self.beta = value
             self.prepare_frame()
-            self.displayFrame()
-        if id == 'gamma':
+            self.display_frame()
+        if what == 'gamma':
             self.gamma = value * 0.01
             self.prepare_frame()
-            self.displayFrame()
-        elif id.startswith("color_"):
-            if id.startswith("color_current_"):
-                if id[-1] == 'r':
+            self.display_frame()
+        elif what.startswith("color_"):
+            if what.startswith("color_current_"):
+                if what[-1] == 'r':
                     self.color_current[2] = value
-                elif id[-1] == 'g':
+                elif what[-1] == 'g':
                     self.color_current[1] = value
-                elif id[-1] == 'b':
+                elif what[-1] == 'b':
                     self.color_current[0] = value
-            elif id.startswith("color_past_"):
-                if id[-1] == 'r':
+            elif what.startswith("color_past_"):
+                if what[-1] == 'r':
                     self.color_past[2] = value
-                elif id[-1] == 'g':
+                elif what[-1] == 'g':
                     self.color_past[1] = value
-                elif id[-1] == 'b':
+                elif what[-1] == 'b':
                     self.color_past[0] = value
-            elif id.startswith("color_other_"):
-                if id[-1] == 'r':
+            elif what.startswith("color_other_"):
+                if what[-1] == 'r':
                     self.color_others[2] = value
-                elif id[-1] == 'g':
+                elif what[-1] == 'g':
                     self.color_others[1] = value
-                elif id[-1] == 'b':
+                elif what[-1] == 'b':
                     self.color_others[0] = value
-            self.displayFrame()
+            self.display_frame()
+
+    def reset_display_offset(self):
+        if self.display_frame_offset != 0:
+            cv2.displayOverlay("img", "", 1)
+        self.display_frame_offset = 0
+
+    def refresh_track_frame(self):
+        cv2.setTrackbarMin("frame offset", "scroll", max(0, self.current_frame - 20))
+        cv2.setTrackbarMax("frame offset", "scroll", min(len(self.images), self.current_frame + 20))
+        cv2.setTrackbarPos("frame offset", "scroll", self.current_frame)
 
     def button_callback(self, state, data, **kargs):
         if bool(kargs):
@@ -228,13 +249,19 @@ class ManualTracker():
             self.next('cell')
         elif data == "start_center" and state == 1:
             self.mouse_drag_type = "from_center"
-            self.displayFrame()
+            self.display_frame()
         elif data == "start_top_left" and state == 1:
             self.mouse_drag_type = "from_corner"
-            self.displayFrame()
+            self.display_frame()
+        elif data == "reset_frame_offset":
+            self.reset_display_offset()
+            self.refresh_track_frame()
+            self.prepare_frame()
+            self.display_frame()
 
     def prepare_frame(self):
-        self.current_image = cv2.cvtColor(self.images[self.current_frame], cv2.COLOR_GRAY2BGR)
+        frame_idx = self.current_frame + self.display_frame_offset
+        self.current_image = cv2.cvtColor(self.images[frame_idx], cv2.COLOR_GRAY2BGR)
 
         self.image_for_drawings = np.clip(
             ((((self.current_image.astype(np.float64) / 255.) ** self.gamma) * 255.) * self.alpha + self.beta),
@@ -242,68 +269,68 @@ class ManualTracker():
             255
         ).astype(np.uint8)
 
-    def displayFrame(self, specific_t=None):
-        f = self.current_frame
-        # if specific_t is not None:
-        #     f += specific_t
-        # f = min(f, len(self.images))
-        
-        # self.current_image = cv2.cvtColor(self.images[f], cv2.COLOR_GRAY2BGR)
-        #
-        # self.current_image = np.clip(
-        #     ((((self.current_image.astype(np.float64) / 255.)**self.gamma)*255.) * self.alpha + self.beta),
-        #     0,
-        #     255
-        # ).astype(np.uint8)
+    def display_frame(self):
+        frame_idx = self.current_frame + self.display_frame_offset
 
         image_to_show = self.image_for_drawings.copy()
 
         if self.display_other_points:
             for cell in self.list_cells:
-                if cell.get(f) is not None:
-                    cell_dict = cell.get(f)
+                if cell.get(frame_idx) is not None:
+                    cell_dict = cell.get(frame_idx)
                     rect = cell_dict['rect']
                     image_to_show = cv2.rectangle(image_to_show, tuple(rect["start"]),
-                                                       tuple(rect["end"]), tuple(self.color_others), 1)
+                                                  tuple(rect["end"]), tuple(self.color_others), 1)
 
         if self.display_current_points:
             for i in range(0, 4):
-                if self.current_cell_position.get(f-i-1) is not None:
-                    last_dict = self.current_cell_position.get(f-i-1)
+                if self.current_cell_position.get(frame_idx - i - 1) is not None:
+                    last_dict = self.current_cell_position.get(frame_idx - i - 1)
                     rect = last_dict['rect']
                     image_to_show = cv2.rectangle(image_to_show, tuple(rect["start"]),
-                                                       tuple(rect["end"]), tuple(self.color_past), 1)
+                                                  tuple(rect["end"]), tuple(self.color_past), 1)
 
         if self.mouse_drag["set"]:
             if self.mouse_drag_type == "from_center":
                 start_point = 2 * self.mouse_drag["start"] - self.mouse_drag["end"]
-                image_to_show = cv2.rectangle(image_to_show, tuple(start_point), tuple(self.mouse_drag["end"]), self.color_current, 1)
+                image_to_show = cv2.rectangle(image_to_show, tuple(start_point), tuple(self.mouse_drag["end"]),
+                                              self.color_current, 1)
             else:
-                image_to_show = cv2.rectangle(image_to_show, tuple(self.mouse_drag["start"]), tuple(self.mouse_drag["end"]), tuple(self.color_current), 1)
-        
+                image_to_show = cv2.rectangle(image_to_show, tuple(self.mouse_drag["start"]),
+                                              tuple(self.mouse_drag["end"]), tuple(self.color_current), 1)
+
         cv2.imshow('img', image_to_show)
         cv2.imshow('scroll', np.zeros((10, 400)).astype(np.uint8))
-        
+
     def run(self):
         cv2.namedWindow("img", cv2.WINDOW_GUI_NORMAL)
-        cv2.setMouseCallback("img", self.mouseCallback)
+        cv2.setMouseCallback("img", self.mouse_callback)
         cv2.imshow('scroll', np.zeros((10, 400)).astype(np.uint8))
-        # cv2.createTrackbar("frame offset", "scroll", 0, len(self.images), lambda x: self.trackCallback('frame', x))
-        cv2.createTrackbar("alpha", "scroll", 100, 1000, lambda x: self.trackCallback('alpha', x))
-        cv2.createTrackbar("beta", "scroll", 0, 255, lambda x: self.trackCallback('beta', x))
-        cv2.createTrackbar("gamma", "scroll", 100, 200, lambda x: self.trackCallback('gamma', x))
+        cv2.createTrackbar("frame offset", "scroll", 0, len(self.images), lambda x: self.track_callback('frame', x))
+        cv2.createTrackbar("alpha", "scroll", 100, 1000, lambda x: self.track_callback('alpha', x))
+        cv2.createTrackbar("beta", "scroll", 0, 255, lambda x: self.track_callback('beta', x))
+        cv2.createTrackbar("gamma", "scroll", 100, 200, lambda x: self.track_callback('gamma', x))
 
-        cv2.createTrackbar("current color R", "scroll", self.color_current[2], 255, lambda x: self.trackCallback('color_current_r', x))
-        cv2.createTrackbar("current color G", "scroll", self.color_current[1], 255, lambda x: self.trackCallback('color_current_g', x))
-        cv2.createTrackbar("current color B", "scroll", self.color_current[0], 255, lambda x: self.trackCallback('color_current_b', x))
+        cv2.createTrackbar("current color R", "scroll", self.color_current[2], 255,
+                           lambda x: self.track_callback('color_current_r', x))
+        cv2.createTrackbar("current color G", "scroll", self.color_current[1], 255,
+                           lambda x: self.track_callback('color_current_g', x))
+        cv2.createTrackbar("current color B", "scroll", self.color_current[0], 255,
+                           lambda x: self.track_callback('color_current_b', x))
 
-        cv2.createTrackbar("past color R", "scroll", self.color_past[2], 255, lambda x: self.trackCallback('color_past_r', x))
-        cv2.createTrackbar("past color G", "scroll", self.color_past[1], 255, lambda x: self.trackCallback('color_past_g', x))
-        cv2.createTrackbar("past color B", "scroll", self.color_past[0], 255, lambda x: self.trackCallback('color_past_b', x))
+        cv2.createTrackbar("past color R", "scroll", self.color_past[2], 255,
+                           lambda x: self.track_callback('color_past_r', x))
+        cv2.createTrackbar("past color G", "scroll", self.color_past[1], 255,
+                           lambda x: self.track_callback('color_past_g', x))
+        cv2.createTrackbar("past color B", "scroll", self.color_past[0], 255,
+                           lambda x: self.track_callback('color_past_b', x))
 
-        cv2.createTrackbar("others color R", "scroll", self.color_others[2], 255, lambda x: self.trackCallback('color_other_r', x))
-        cv2.createTrackbar("others color G", "scroll", self.color_others[1], 255, lambda x: self.trackCallback('color_other_g', x))
-        cv2.createTrackbar("others color B", "scroll", self.color_others[0], 255, lambda x: self.trackCallback('color_other_b', x))
+        cv2.createTrackbar("others color R", "scroll", self.color_others[2], 255,
+                           lambda x: self.track_callback('color_other_r', x))
+        cv2.createTrackbar("others color G", "scroll", self.color_others[1], 255,
+                           lambda x: self.track_callback('color_other_g', x))
+        cv2.createTrackbar("others color B", "scroll", self.color_others[0], 255,
+                           lambda x: self.track_callback('color_other_b', x))
         # cv2.namedWindow('Interface')
         cv2.createButton("save", self.button_callback, "save", cv2.QT_PUSH_BUTTON)
         cv2.createButton("save (include current)", self.button_callback, "save_include", cv2.QT_PUSH_BUTTON)
@@ -311,8 +338,11 @@ class ManualTracker():
         cv2.createButton("next time", self.button_callback, "time", cv2.QT_PUSH_BUTTON)
         cv2.createButton("next cell", self.button_callback, "cell", cv2.QT_PUSH_BUTTON)
 
-        cv2.createButton("start top left", self.button_callback, "start_top_left", cv2.QT_RADIOBOX | cv2.QT_NEW_BUTTONBAR)
-        cv2.createButton("start center", self.button_callback, "start_center", cv2.QT_RADIOBOX)
+        cv2.createButton("reset frame display offset", self.button_callback, "reset_frame_offset", cv2.QT_PUSH_BUTTON | cv2.QT_NEW_BUTTONBAR)
+
+        cv2.createButton("Start drawing rectangle from :", self.button_callback, "", cv2.QT_PUSH_BUTTON | cv2.QT_NEW_BUTTONBAR, False)
+        cv2.createButton("Top left corner", self.button_callback, "start_top_left", cv2.QT_RADIOBOX)
+        cv2.createButton("Center", self.button_callback, "start_center", cv2.QT_RADIOBOX)
 
         cv2.createButton("quit", self.button_callback, "quit", cv2.QT_PUSH_BUTTON | cv2.QT_NEW_BUTTONBAR)
 
@@ -320,10 +350,10 @@ class ManualTracker():
 
         self.prepare_frame()
         while self.running:
-            self.displayFrame()
+            self.display_frame()
 
             key = cv2.waitKey()
-            
+
             if key == 32:  # SPACE
                 self.next('time')
             elif key == 115:  # S
@@ -351,6 +381,3 @@ if __name__ == '__main__':
 
     tracker = ManualTracker(input_file, start_frame)
     tracker.run()
-
-
-
