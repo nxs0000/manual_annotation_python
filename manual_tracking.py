@@ -221,6 +221,7 @@ class ManualTracker():
         elif data == "quit":
             self.save("onquit")
             self.running = False
+            exit(0)
         elif data == 'time':
             self.next('time')
         elif data == 'cell':
