@@ -272,9 +272,9 @@ class ManualTracker(object):
         self.display_frame_offset = 0
 
     def refresh_track_frame(self):
-        cv2.setTrackbarMin("frame offset", "scroll", max(0, self.current_frame - 20))
-        cv2.setTrackbarMax("frame offset", "scroll", min(len(self.images), self.current_frame + 20))
-        cv2.setTrackbarPos("frame offset", "scroll", self.current_frame)
+        cv2.setTrackbarMin("frame offset", "Controls", max(0, self.current_frame - 20))
+        cv2.setTrackbarMax("frame offset", "Controls", min(len(self.images), self.current_frame + 20))
+        cv2.setTrackbarPos("frame offset", "Controls", self.current_frame)
 
     def button_callback(self, state, data, **kargs):
         if bool(kargs):
@@ -352,36 +352,36 @@ class ManualTracker(object):
                                               tuple(self.mouse_drag["end"]), tuple(self.color_current), 1)
 
         cv2.imshow('img', image_to_show)
-        cv2.imshow('scroll', np.zeros((10, 400)).astype(np.uint8))
+        cv2.imshow('Controls', np.zeros((10, 400)).astype(np.uint8))
 
     def run(self):
         cv2.namedWindow("img", cv2.WINDOW_GUI_NORMAL)
         cv2.setMouseCallback("img", self.mouse_callback)
-        cv2.imshow('scroll', np.zeros((10, 400)).astype(np.uint8))
-        cv2.createTrackbar("frame offset", "scroll", 0, len(self.images), lambda x: self.track_callback('frame', x))
-        cv2.createTrackbar("alpha", "scroll", 100, 1000, lambda x: self.track_callback('alpha', x))
-        cv2.createTrackbar("beta", "scroll", 0, 255, lambda x: self.track_callback('beta', x))
-        cv2.createTrackbar("gamma", "scroll", 100, 200, lambda x: self.track_callback('gamma', x))
+        cv2.imshow('Controls', np.zeros((10, 400)).astype(np.uint8))
+        cv2.createTrackbar("frame offset", "Controls", 0, len(self.images), lambda x: self.track_callback('frame', x))
+        cv2.createTrackbar("alpha", "Controls", 100, 1000, lambda x: self.track_callback('alpha', x))
+        cv2.createTrackbar("beta", "Controls", 0, 255, lambda x: self.track_callback('beta', x))
+        cv2.createTrackbar("gamma", "Controls", 100, 200, lambda x: self.track_callback('gamma', x))
 
-        cv2.createTrackbar("current color R", "scroll", self.color_current[2], 255,
+        cv2.createTrackbar("current color R", "Controls", self.color_current[2], 255,
                            lambda x: self.track_callback('color_current_r', x))
-        cv2.createTrackbar("current color G", "scroll", self.color_current[1], 255,
+        cv2.createTrackbar("current color G", "Controls", self.color_current[1], 255,
                            lambda x: self.track_callback('color_current_g', x))
-        cv2.createTrackbar("current color B", "scroll", self.color_current[0], 255,
+        cv2.createTrackbar("current color B", "Controls", self.color_current[0], 255,
                            lambda x: self.track_callback('color_current_b', x))
 
-        cv2.createTrackbar("past color R", "scroll", self.color_past[2], 255,
+        cv2.createTrackbar("past color R", "Controls", self.color_past[2], 255,
                            lambda x: self.track_callback('color_past_r', x))
-        cv2.createTrackbar("past color G", "scroll", self.color_past[1], 255,
+        cv2.createTrackbar("past color G", "Controls", self.color_past[1], 255,
                            lambda x: self.track_callback('color_past_g', x))
-        cv2.createTrackbar("past color B", "scroll", self.color_past[0], 255,
+        cv2.createTrackbar("past color B", "Controls", self.color_past[0], 255,
                            lambda x: self.track_callback('color_past_b', x))
 
-        cv2.createTrackbar("others color R", "scroll", self.color_others[2], 255,
+        cv2.createTrackbar("others color R", "Controls", self.color_others[2], 255,
                            lambda x: self.track_callback('color_other_r', x))
-        cv2.createTrackbar("others color G", "scroll", self.color_others[1], 255,
+        cv2.createTrackbar("others color G", "Controls", self.color_others[1], 255,
                            lambda x: self.track_callback('color_other_g', x))
-        cv2.createTrackbar("others color B", "scroll", self.color_others[0], 255,
+        cv2.createTrackbar("others color B", "Controls", self.color_others[0], 255,
                            lambda x: self.track_callback('color_other_b', x))
         # cv2.namedWindow('Interface')
         cv2.createButton("save", self.button_callback, "save", cv2.QT_PUSH_BUTTON)
@@ -402,7 +402,7 @@ class ManualTracker(object):
 
         cv2.createButton("quit", self.button_callback, "quit", cv2.QT_PUSH_BUTTON | cv2.QT_NEW_BUTTONBAR)
 
-        print('--- After starting, select \'scroll\' window and press ctrl+p ---')
+        print('--- After starting, select \'Controls\' window and press ctrl+p ---')
         print('')
         print('- Right click and drag to draw rectangles')
         print('- CTRL + Right click to move closest corner')
@@ -430,7 +430,7 @@ class ManualTracker(object):
 
 """
 
---- After starting, select 'scroll' window and press ctrl+p ---
+--- After starting, select 'Controls' window and press ctrl+p ---
 
 - Right click and drag to draw rectangles
 - CTRL + Right click to move closest corner
