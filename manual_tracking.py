@@ -99,6 +99,10 @@ class ManualTracker(object):
             "end": np.ones((2), dtype=np.int64) * -1
         }
 
+    def is_current_rect_valid(self):
+        return 0 <= self.mouse_drag["start"][0] < self.mouse_drag["end"][0] and \
+               0 <= self.mouse_drag["start"][1] < self.mouse_drag["end"][1]
+
     def undo(self):
         if self.current_cell_position.get(self.current_frame - 1) is not None:
             del self.current_cell_position[self.current_frame - 1]
@@ -119,7 +123,7 @@ class ManualTracker(object):
             if self.mouse_drag["end"][0] >= 0 and self.mouse_drag["end"][1] >= 0:
                 dict_to_add = {
                     "rect": {
-                        "start": self.mouse_drag["start"] if self.mouse_drag_type != "from_center" else 2 * self.mouse_drag["start"] - self.mouse_drag["end"],
+                        "start": self.mouse_drag["start"],
                         "end": self.mouse_drag["end"]
                     }
                 }
@@ -150,24 +154,66 @@ class ManualTracker(object):
     def set_autosave_interval(self, interval):
         self.autosave_interval = interval
 
+    def move_corner(self, idx, x, y):
+        if idx == 0:
+            self.mouse_drag["start"] = np.array([x, y])
+        elif idx == 1:
+            self.mouse_drag["start"][1] = y
+            self.mouse_drag["end"][0] = x
+        elif idx == 2:
+            self.mouse_drag["start"][0] = x
+            self.mouse_drag["end"][1] = y
+        elif idx == 3:
+            self.mouse_drag["end"] = np.array([x, y])
+
     def mouse_callback(self, event, x, y, flags, userdata, **kargs):
         if bool(kargs):
             print(f"mouseCallback - Extra arguments {kargs}")
 
         if event == cv2.EVENT_MOUSEMOVE:
             if flags & cv2.EVENT_FLAG_RBUTTON:
-                # move during rectangle draw
-                if self.mouse_drag["active"]:
+                if self.mouse_drag["active"] == "whole_rect":
                     self.mouse_drag["end"] = np.array([x, y])
                     self.mouse_drag["set"] = True
+                elif self.mouse_drag["active"].startswith("corner_"):
+                    corner_idx = int(self.mouse_drag["active"][-1])
+                    self.move_corner(corner_idx, x, y)
+
         elif event == cv2.EVENT_RBUTTONUP:
-            if self.mouse_drag["start"][0] >= 0:
-                self.mouse_drag["end"] = np.array([x, y])
-            self.mouse_drag["active"] = False
+            if self.mouse_drag["active"] == "whole_rect":
+                end_point = np.array([x, y])
+                if self.mouse_drag_type == "from_center":
+                    start_point = 2 * self.mouse_drag["start"] - end_point
+                else:
+                    start_point = self.mouse_drag["start"]
+            elif self.mouse_drag["active"].startswith("corner_"):
+                start_point = self.mouse_drag["start"].copy()
+                end_point = self.mouse_drag["end"].copy()
+            self.mouse_drag["start"][0] = min(start_point[0], end_point[0])
+            self.mouse_drag["start"][1] = min(start_point[1], end_point[1])
+            self.mouse_drag["end"][0] = max(start_point[0], end_point[0])
+            self.mouse_drag["end"][1] = max(start_point[1], end_point[1])
+            self.mouse_drag["active"] = ""
+
         elif event == cv2.EVENT_RBUTTONDOWN:
-            self.reset_rect()
-            self.mouse_drag["start"] = np.array([x, y])
-            self.mouse_drag["active"] = True
+            if flags & cv2.EVENT_FLAG_CTRLKEY and self.is_current_rect_valid():
+                if self.is_current_rect_valid():
+                    if x - self.mouse_drag["start"][0] < self.mouse_drag["end"][0] - x:
+                        if y - self.mouse_drag["start"][1] < self.mouse_drag["end"][1] - y:
+                            corner_idx = 0
+                        else:
+                            corner_idx = 2
+                    else:
+                        if y - self.mouse_drag["start"][1] < self.mouse_drag["end"][1] - y:
+                            corner_idx = 1
+                        else:
+                            corner_idx = 3
+                    self.mouse_drag["active"] = f"corner_{corner_idx}"
+                    self.move_corner(corner_idx, x, y)
+            else:
+                self.reset_rect()
+                self.mouse_drag["start"] = np.array([x, y])
+                self.mouse_drag["active"] = "whole_rect"
         else:
             return
         self.display_frame()
@@ -291,8 +337,8 @@ class ManualTracker(object):
                                                   tuple(rect["end"]), tuple(self.color_past), 1)
 
         if self.mouse_drag["set"]:
-            if self.mouse_drag_type == "from_center":
-                start_point = 2 * self.mouse_drag["start"] - self.mouse_drag["end"]
+            if self.mouse_drag_type == "from_center" and self.mouse_drag["active"] == "whole_rect":
+                start_point = (2 * self.mouse_drag["start"] - self.mouse_drag["end"]).astype(np.int64)
                 image_to_show = cv2.rectangle(image_to_show, tuple(start_point), tuple(self.mouse_drag["end"]),
                                               self.color_current, 1)
             else:
@@ -347,6 +393,14 @@ class ManualTracker(object):
         cv2.createButton("quit", self.button_callback, "quit", cv2.QT_PUSH_BUTTON | cv2.QT_NEW_BUTTONBAR)
 
         print('--- After starting, select \'scroll\' window and press ctrl+p ---')
+        print('')
+        print('- Right click and drag to draw rectangles')
+        print('- CTRL + Right click to move closest corner')
+        print('- Space to validate current rectangle and move on to the next frame')
+        print('- Space without drawing new rectangle to move en to the next object to track from the begining')
+        print('- S to save all validated objects')
+        print('- Z to undo last rectangle')
+
 
         self.prepare_frame()
         while self.running:
@@ -362,6 +416,20 @@ class ManualTracker(object):
                 self.undo()
 
         cv2.destroyAllWindows()
+
+
+"""
+
+--- After starting, select 'scroll' window and press ctrl+p ---
+
+- Right click and drag to draw rectangles
+- CTRL + Right click to move closest corner
+- Space to validate current rectangle and move on to the next frame
+- Space without drawing new rectangle to move en to the next object to track from the beginning
+- S to save all validated objects
+- Z to undo last rectangle
+
+"""
 
 
 if __name__ == '__main__':
