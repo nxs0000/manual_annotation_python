@@ -93,7 +93,7 @@ class ManualTracker(object):
 
     def reset_rect(self):
         self.mouse_drag = {
-            "active": False,
+            "active": "",
             "set": False,
             "start": np.ones((2), dtype=np.int64) * -1,
             "end": np.ones((2), dtype=np.int64) * -1
@@ -186,7 +186,7 @@ class ManualTracker(object):
                     start_point = 2 * self.mouse_drag["start"] - end_point
                 else:
                     start_point = self.mouse_drag["start"]
-            elif self.mouse_drag["active"].startswith("corner_"):
+            elif len(self.mouse_drag["active"]) > 0 and self.mouse_drag["active"].startswith("corner_"):
                 start_point = self.mouse_drag["start"].copy()
                 end_point = self.mouse_drag["end"].copy()
             self.mouse_drag["start"][0] = min(start_point[0], end_point[0])
@@ -304,6 +304,12 @@ class ManualTracker(object):
             self.refresh_track_frame()
             self.prepare_frame()
             self.display_frame()
+        elif data == "display_other":
+            self.display_other_points = state == 1
+            self.display_frame()
+        elif data == "display_past":
+            self.display_current_points = state == 1
+            self.display_frame()
 
     def prepare_frame(self):
         frame_idx = self.current_frame + self.display_frame_offset
@@ -386,9 +392,13 @@ class ManualTracker(object):
 
         cv2.createButton("reset frame display offset", self.button_callback, "reset_frame_offset", cv2.QT_PUSH_BUTTON | cv2.QT_NEW_BUTTONBAR)
 
-        cv2.createButton("Start drawing rectangle from :", self.button_callback, "", cv2.QT_PUSH_BUTTON | cv2.QT_NEW_BUTTONBAR, False)
+        cv2.createButton("Start drawing rectangle from :", self.button_callback, "", cv2.QT_PUSH_BUTTON | cv2.QT_NEW_BUTTONBAR)
         cv2.createButton("Top left corner", self.button_callback, "start_top_left", cv2.QT_RADIOBOX)
-        cv2.createButton("Center", self.button_callback, "start_center", cv2.QT_RADIOBOX)
+        cv2.createButton("Center", self.button_callback, "start_center", cv2.QT_RADIOBOX, True)
+
+        cv2.createButton("Display other objects", self.button_callback, "display_other", cv2.QT_CHECKBOX | cv2.QT_NEW_BUTTONBAR, True)
+        cv2.createButton("Display past positions", self.button_callback, "display_past", cv2.QT_CHECKBOX, True)
+
 
         cv2.createButton("quit", self.button_callback, "quit", cv2.QT_PUSH_BUTTON | cv2.QT_NEW_BUTTONBAR)
 
