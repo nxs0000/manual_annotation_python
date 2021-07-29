@@ -1,14 +1,12 @@
-import os
 import numpy as np
 import cv2
-# import matplotlib.pyplot as plt
 import json
 from datetime import datetime
 
 from services.file_service import open_file
 
 
-class ManualTracker(object):
+class TrackingManager(object):
     def __init__(self, file, starting_frame=0):
         self.list_cells = []
         self.current_cell_position = {}
@@ -425,16 +423,6 @@ class ManualTracker(object):
 
         cv2.createButton("quit", self.button_callback, "quit", cv2.QT_PUSH_BUTTON | cv2.QT_NEW_BUTTONBAR)
 
-        print('--- After starting, select \'Controls\' window and press ctrl+p ---')
-        print('')
-        print('- Right click and drag to draw rectangles')
-        print('- CTRL + Right click to move closest corner')
-        print('- Space to validate current rectangle and move on to the next frame')
-        print('- Space without drawing new rectangle to move en to the next object to track from the begining')
-        print('- S to save all validated objects')
-        print('- Z to undo last rectangle')
-
-
         self.prepare_frame()
         while self.running:
             self.display_frame()
@@ -449,36 +437,3 @@ class ManualTracker(object):
                 self.undo()
 
         cv2.destroyAllWindows()
-
-
-"""
-
---- After starting, select 'Controls' window and press ctrl+p ---
-
-- Right click and drag to draw rectangles
-- CTRL + Right click to move closest corner
-- Space to validate current rectangle and move on to the next frame
-- Space without drawing new rectangle to move en to the next object to track from the beginning
-- S to save all validated objects
-- Z to undo last rectangle
-
-"""
-
-
-if __name__ == '__main__':
-
-    input_file = input('Path to the file/folder : ')
-    if not os.path.isfile(input_file):
-        print(f'Given path is not a file')
-        exit(1)
-    start_frame = input('Start at frame (default 0): ')
-    try:
-        if len(start_frame) != 0:
-            start_frame = 0
-        else:
-            start_frame = int(start_frame)
-    except:
-        start_frame = 0
-
-    tracker = ManualTracker(input_file, start_frame)
-    tracker.run()
