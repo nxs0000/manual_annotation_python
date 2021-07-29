@@ -18,7 +18,7 @@ class TiffReader(BaseReader):
         self.convert_to_rgb = False
 
     def get_frame(self, idx):
-        timestamps = idx * self.channels_count
+        timestamps = idx * self.channels_count + self.channel_to_show
         return self.all_frames[timestamps], f'timestamp_{idx}'
 
     def get_frame_count(self):
@@ -28,10 +28,17 @@ class TiffReader(BaseReader):
         if what == 'channels_count':
             self.channels_count = int(kargs['value'][0])
             self.caller.force_refresh()
-        pass
+        elif what == "channel_show":
+            self.channel_to_show = min(self.channels_count, int(kargs['value'][0])) - 1
+            self.caller.force_refresh()
 
     def create_gui_options(self, window_name):
         cv2.createTrackbar("Amount of channels", window_name, 1, 4,
                            lambda *x: self.signal_from_gui(what='channels_count', value=x))
         cv2.setTrackbarMin("Amount of channels", window_name, 1)
         cv2.setTrackbarMax("Amount of channels", window_name, 4)
+
+        cv2.createTrackbar("Channel to show", window_name, 1, 4,
+                           lambda *x: self.signal_from_gui(what='channel_show', value=x))
+        cv2.setTrackbarMin("Channel to show", window_name, 1)
+        cv2.setTrackbarMax("Channel to show", window_name, 4)
