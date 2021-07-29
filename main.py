@@ -1,5 +1,6 @@
 import os
 
+from managers.detection_manager import DetectionManager
 from managers.tracking_manager import TrackingManager
 
 """
@@ -19,17 +20,9 @@ from managers.tracking_manager import TrackingManager
 if __name__ == '__main__':
 
     input_file = input('Path to the file/folder : ')
-    if not os.path.isfile(input_file):
-        print(f'Given path is not a file')
+    if not os.path.isfile(input_file) or not os.path.isdir(input_file):
+        print(f'Given path is not a file nor directory')
         exit(1)
-    start_frame = input('Start at frame (default 0): ')
-    try:
-        if len(start_frame) != 0:
-            start_frame = 0
-        else:
-            start_frame = int(start_frame)
-    except:
-        start_frame = 0
 
     print('')
     print('--- After starting, select \'Controls\' window and press ctrl+p ---')
@@ -41,5 +34,5 @@ if __name__ == '__main__':
     print('- S to save all validated objects')
     print('- Z to undo last rectangle')
 
-    tracker = TrackingManager(input_file, start_frame)
-    tracker.run()
+    detector = DetectionManager(input_file)
+    detector.run()
