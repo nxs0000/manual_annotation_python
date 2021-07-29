@@ -5,21 +5,22 @@ import cv2
 import json
 from datetime import datetime
 
+from services.file_service import open_file
+
 
 class ManualTracker(object):
     def __init__(self, file, starting_frame=0):
         self.list_cells = []
         self.current_cell_position = {}
 
-        ret, self.images = cv2.imreadmulti(file)[starting_frame:]
+        self.reader = open_file(self, file)
+
         self.starting_frame = starting_frame
         self.current_frame = self.starting_frame
-        self.current_image = self.images[self.current_frame]
-        self.image_for_drawings = self.current_image.copy()
+        self.current_image = np.zeros((1,1))
+        self.image_for_drawings = np.zeros((1,1))
 
         self.autosave_interval = 10
-
-        self.h, self.w = self.images[0].shape
 
         self.display_current_points = True
         self.display_other_points = True
@@ -39,6 +40,10 @@ class ManualTracker(object):
         self.gamma = 1.0
 
         self.display_frame_offset = 0
+
+        self.frame_reference = None
+        self.prepare_frame()
+        self.h, self.w = self.current_image.shape[:2]
 
     def save(self, suffix=None, include_current=False):
         file_name = f"./save_{str(datetime.now())[:19].replace(':', '-').replace(' ', '_')}.json"
@@ -62,6 +67,8 @@ class ManualTracker(object):
                         'end': (int(v['rect']['end'][0]), int(v['rect']['end'][1])),
                     }
                 }
+                if v.get("ref"):
+                    dict_for_cell["timestamps"][k]["ref"] = v["ref"]
 
             list_to_save.append(dict_for_cell)
 
@@ -78,6 +85,8 @@ class ManualTracker(object):
                         'end': (int(v['rect']['end'][0]), int(v['rect']['end'][1])),
                     }
                 }
+                if v.get("ref"):
+                    dict_for_cell["timestamps"][k]["ref"] = v["ref"]
 
             list_to_save.append(dict_for_cell)
 
@@ -122,6 +131,7 @@ class ManualTracker(object):
             # validate rect
             if self.mouse_drag["end"][0] >= 0 and self.mouse_drag["end"][1] >= 0:
                 dict_to_add = {
+                    "ref": self.frame_reference,
                     "rect": {
                         "start": self.mouse_drag["start"],
                         "end": self.mouse_drag["end"]
@@ -180,6 +190,7 @@ class ManualTracker(object):
                     self.move_corner(corner_idx, x, y)
 
         elif event == cv2.EVENT_RBUTTONUP:
+            start_point = None
             if self.mouse_drag["active"] == "whole_rect":
                 end_point = np.array([x, y])
                 if self.mouse_drag_type == "from_center":
@@ -189,11 +200,13 @@ class ManualTracker(object):
             elif len(self.mouse_drag["active"]) > 0 and self.mouse_drag["active"].startswith("corner_"):
                 start_point = self.mouse_drag["start"].copy()
                 end_point = self.mouse_drag["end"].copy()
-            self.mouse_drag["start"][0] = min(start_point[0], end_point[0])
-            self.mouse_drag["start"][1] = min(start_point[1], end_point[1])
-            self.mouse_drag["end"][0] = max(start_point[0], end_point[0])
-            self.mouse_drag["end"][1] = max(start_point[1], end_point[1])
-            self.mouse_drag["active"] = ""
+
+            if start_point is not None:
+                self.mouse_drag["start"][0] = min(start_point[0], end_point[0])
+                self.mouse_drag["start"][1] = min(start_point[1], end_point[1])
+                self.mouse_drag["end"][0] = max(start_point[0], end_point[0])
+                self.mouse_drag["end"][1] = max(start_point[1], end_point[1])
+                self.mouse_drag["active"] = ""
 
         elif event == cv2.EVENT_RBUTTONDOWN:
             if flags & cv2.EVENT_FLAG_CTRLKEY and self.is_current_rect_valid():
@@ -273,7 +286,7 @@ class ManualTracker(object):
 
     def refresh_track_frame(self):
         cv2.setTrackbarMin("frame offset", "Controls", max(0, self.current_frame - 20))
-        cv2.setTrackbarMax("frame offset", "Controls", min(len(self.images), self.current_frame + 20))
+        cv2.setTrackbarMax("frame offset", "Controls", min(self.reader.get_frame_count(), self.current_frame + 20))
         cv2.setTrackbarPos("frame offset", "Controls", self.current_frame)
 
     def button_callback(self, state, data, **kargs):
@@ -311,9 +324,17 @@ class ManualTracker(object):
             self.display_current_points = state == 1
             self.display_frame()
 
+    def force_refresh(self):
+        self.prepare_frame()
+        self.display_frame()
+
     def prepare_frame(self):
         frame_idx = self.current_frame + self.display_frame_offset
-        self.current_image = cv2.cvtColor(self.images[frame_idx], cv2.COLOR_GRAY2BGR)
+        image, self.frame_reference = self.reader.get_frame(frame_idx)
+
+        self.current_image = image.copy()
+        if len(image.shape) == 2:
+            self.current_image = cv2.cvtColor(self.current_image, cv2.COLOR_GRAY2BGR)
 
         self.image_for_drawings = np.clip(
             ((((self.current_image.astype(np.float64) / 255.) ** self.gamma) * 255.) * self.alpha + self.beta),
@@ -358,7 +379,10 @@ class ManualTracker(object):
         cv2.namedWindow("img", cv2.WINDOW_GUI_NORMAL)
         cv2.setMouseCallback("img", self.mouse_callback)
         cv2.imshow('Controls', np.zeros((10, 400)).astype(np.uint8))
-        cv2.createTrackbar("frame offset", "Controls", 0, len(self.images), lambda x: self.track_callback('frame', x))
+
+        self.reader.create_gui_options("Controls")
+
+        cv2.createTrackbar("frame offset", "Controls", 0, self.reader.get_frame_count(), lambda x: self.track_callback('frame', x))
         cv2.createTrackbar("alpha", "Controls", 100, 1000, lambda x: self.track_callback('alpha', x))
         cv2.createTrackbar("beta", "Controls", 0, 255, lambda x: self.track_callback('beta', x))
         cv2.createTrackbar("gamma", "Controls", 100, 200, lambda x: self.track_callback('gamma', x))
@@ -398,7 +422,6 @@ class ManualTracker(object):
 
         cv2.createButton("Display other objects", self.button_callback, "display_other", cv2.QT_CHECKBOX | cv2.QT_NEW_BUTTONBAR, True)
         cv2.createButton("Display past positions", self.button_callback, "display_past", cv2.QT_CHECKBOX, True)
-
 
         cv2.createButton("quit", self.button_callback, "quit", cv2.QT_PUSH_BUTTON | cv2.QT_NEW_BUTTONBAR)
 
@@ -444,7 +467,7 @@ class ManualTracker(object):
 
 if __name__ == '__main__':
 
-    input_file = input('Path to the file : ')
+    input_file = input('Path to the file/folder : ')
     if not os.path.isfile(input_file):
         print(f'Given path is not a file')
         exit(1)
